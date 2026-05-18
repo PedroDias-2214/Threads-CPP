@@ -7,6 +7,13 @@
 #include <thread>
 #include <functional> // Isso aqui é para poder utilizar o cref() depois, pra não ficar copiando o vetor na memória
 
+// Por ser unordered, ele não automaticamente ordena tudo que for inserido.
+// É mais rápido do que só std::map<> e std::set<>
+#include <unordered_map>
+#include <unordered_set>
+
+#include <stdexcept>
+
 class Operacoes {
 private:
     template <typename T>
@@ -39,7 +46,7 @@ private:
         double diferenca = 1.0;
 
         while (diferenca > margem_erro) {
-            double prox_palpite = 0.5*(palpite + (numero/palpite));
+            double prox_palpite = 0.5 * (palpite + (numero/palpite));
             diferenca = prox_palpite-palpite;
             if (diferenca < 0) diferenca = -diferenca;
             palpite = prox_palpite;
@@ -99,6 +106,32 @@ private:
         }
     }
 
+    template <typename T>
+    static void min_chunk(const std::vector<T>& valores, const size_t inicio,
+        const size_t fim, std::vector<T>& minimos_locais, size_t index) {
+        T min_atual = valores[inicio];
+
+        for (size_t i = inicio+1; i < fim; ++i) {
+            if (valores[i] < min_atual) {
+                min_atual = valores[i];
+            }
+        }
+        minimos_locais[index] = min_atual;
+    }
+
+    template <typename T>
+    static void max_chunk(const std::vector<T>& valores, const size_t inicio,
+    const size_t fim, std::vector<T>& minimos_locais, size_t index) {
+        T max_atual = valores[inicio];
+
+        for (size_t i = inicio+1; i < fim; ++i) {
+            if (valores[i] > max_atual) {
+                max_atual = valores[i];
+            }
+        }
+        minimos_locais[index] = max_atual;
+    }
+
 public:
     template <typename T>
     static T soma(const std::vector<T>& valores) {
@@ -111,11 +144,14 @@ public:
 
         std::vector<std::thread> threads (numero_threads);
         std::vector<T> subtotais (numero_threads, 0);
+        unsigned int threads_ativas = 0;
 
         const size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
 
         for (unsigned int i = 0; i < numero_threads; ++i) {
             size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
             size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
 
             threads[i] = std::thread(
@@ -126,13 +162,16 @@ public:
             std::ref(subtotais),
             i
             );
+            threads_ativas++;
         }
 
-        for (auto& thread : threads) thread.join();
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
 
         T soma_total = 0;
-        for (T subtotal : subtotais) {
-            soma_total += subtotal;
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            soma_total += subtotais[i];
         }
 
         return soma_total;
@@ -157,10 +196,14 @@ public:
 
         std::vector<std::thread> threads(numero_threads);
         std::vector<double> subtotais_quadrados(numero_threads, 0.0);
+        unsigned int threads_ativas = 0;
+
         size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
 
         for (unsigned int i=0; i<numero_threads; ++i) {
             size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
             size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
 
             threads[i] = std::thread(
@@ -172,13 +215,16 @@ public:
             std::ref(subtotais_quadrados),
             i
             );
+            threads_ativas ++;
         }
 
-        for (auto& thread : threads) thread.join();
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
 
         double soma_quadrados_total = 0.0;
-        for (double subtotal : subtotais_quadrados) {
-            soma_quadrados_total += subtotal;
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            soma_quadrados_total += subtotais_quadrados[i];
         }
 
         return soma_quadrados_total / tamanho;
@@ -201,10 +247,13 @@ public:
         if (numero_threads > tamanho) numero_threads = tamanho;
 
         std::vector<std::thread> threads(numero_threads);
+        unsigned int threads_ativas = 0;
         size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
 
         for (unsigned int i=0; i<numero_threads; ++i) {
             size_t inicio = i*chunk_size;
+            if (inicio >= tamanho) break;
+
             size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
 
             threads[i] = std::thread(
@@ -213,14 +262,17 @@ public:
                 inicio,
                 fim-1
                 );
+            threads_ativas++;
         }
 
-        for (auto& thread : threads) thread.join();
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
         threads.clear();
 
-        for (unsigned int passo=1; passo<numero_threads; passo*=2) {
-            for (unsigned int i=0; i<numero_threads; i+=2*passo) {
-                if (i+passo >= numero_threads) break;
+        for (unsigned int passo=1; passo<threads_ativas; passo*=2) {
+            for (unsigned int i=0; i<threads_ativas; i+=2*passo) {
+                if (i+passo >= threads_ativas) break;
 
                 size_t inicio = i * chunk_size;
                 size_t meio = (i + passo) * chunk_size - 1;
@@ -239,7 +291,9 @@ public:
                     ));
 
             }
-            for (auto& thread : threads) thread.join();
+            for (unsigned int i=0; i < threads_ativas; ++i) {
+                if (threads[i].joinable()) threads[i].join();
+            }
             threads.clear();
         }
     }
@@ -263,6 +317,7 @@ public:
         if (numero_threads > tamanho) numero_threads = tamanho;
 
         std::vector<std::thread> threads(numero_threads);
+        unsigned int threads_ativas = 0;
 
         // É onde todas as threads vão escrever se acharem um erro
         // É mais prático usar isso do que criar um bool para cada thread e depois verificar todos
@@ -272,6 +327,8 @@ public:
 
         for (unsigned int i=0; i<numero_threads; ++i) {
             size_t inicio = i*chunk_size;
+            if (inicio >= tamanho) break;
+
             size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
 
             threads[i] = std::thread([&valores, inicio, fim, tamanho, &vetor_ordenado]() {
@@ -284,9 +341,12 @@ public:
                     }
                 }
             });
+            threads_ativas++;
         }
 
-        for (auto& thread : threads) thread.join();
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
 
         return vetor_ordenado.load();
     }
@@ -316,7 +376,321 @@ public:
 
         return static_cast<double>(valores[pos_q3]) - static_cast<double>(valores[pos_q1]);
     }
+
+    static std::unordered_map<std::string, int> gerar_dicionario_classificacao(const std::vector<std::string>& valores) {
+        const size_t tamanho = valores.size();
+        std::unordered_map<std::string, int> dicionario_final;
+        if (tamanho == 0) return dicionario_final;
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::unordered_set<std::string>> sets_locais(numero_threads);
+        std::vector<std::thread> threads(numero_threads);
+        unsigned int threads_ativas = 0;
+
+        size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i<numero_threads; ++i) {
+            size_t inicio = i*chunk_size;
+            if (inicio >= tamanho) break;
+
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread([&valores, inicio, fim, &sets_locais, i]() {
+                for (size_t j=inicio; j<fim; j++) {
+                    sets_locais[i].insert(valores[j]); // Coloca o valor só no set dela
+                    // sets_locais[i] representa o set especifico da thread
+                }
+            });
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        int proximo_id = 1;
+        for (const auto& set_local : sets_locais) {
+            for (const std::string& palavra : set_local) {
+                if (dicionario_final.find(palavra) == dicionario_final.end()) {
+                    dicionario_final[palavra] = proximo_id;
+                    proximo_id++;
+                }
+            }
+        }
+        return dicionario_final;
+    }
+
+    // Essa função retorna um vetor de inteiros com a classificação.
+    // Como uma tradução transformando os textos em números
+    static std::vector<int> traduzir_para_ids(const std::vector<std::string>& valores,
+        const std::unordered_map<std::string, int>& dicionario) {
+
+        const size_t tamanho = valores.size();
+        std::vector<int> resultado(tamanho);
+        if (tamanho == 0) return resultado;
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::thread> threads (numero_threads);
+        unsigned int threads_ativas = 0;
+        size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i < numero_threads; ++i) {
+            size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread([&valores, &dicionario, &resultado, inicio, fim]() {
+                for (size_t j = inicio; j < fim; ++j) {
+                    resultado[j] = dicionario.at(valores[j]);
+                }
+            });
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        return resultado;
+    }
+
+
+    static std::vector<std::pair<std::string, int>> get_dicionario_ordenado(const std::unordered_map<std::string, int>& dicionario) {
+        std::vector<std::pair<std::string, int>> elementos(dicionario.begin(), dicionario.end());
+
+        if (elementos.empty()) return elementos;
+        Operacoes::sort(elementos);
+
+        return elementos;
+    }
+
+    template <typename T>
+    static T min(const std::vector<T>& valores) {
+        const size_t tamanho = valores.size();
+        if (tamanho == 0) throw std::invalid_argument("Vetor vazio!");
+        if (tamanho == 1) return valores[0];
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::thread> threads(numero_threads);
+        std::vector<T> minimos_locais(numero_threads);
+        unsigned int threads_ativas = 0;
+
+        const size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i < numero_threads; ++i) {
+            size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread(
+                min_chunk<T>,
+                std::cref(valores),
+                inicio,
+                fim,
+                std::ref(minimos_locais),
+                i
+                );
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        T min_global = minimos_locais[0];
+        for (size_t i=1; i < threads_ativas; ++i) {
+            if (minimos_locais[i] < min_global) {
+                min_global = minimos_locais[i];
+            }
+        }
+
+        return min_global;
+    }
+
+
+    template <typename T>
+    static T max(const std::vector<T>& valores) {
+        const size_t tamanho = valores.size();
+        if (tamanho == 0) throw std::invalid_argument("Vetor vazio!");
+        if (tamanho == 1) return valores[0];
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::thread> threads(numero_threads);
+        std::vector<T> maximos_locais(numero_threads);
+        unsigned int threads_ativas = 0;
+
+        const size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i < numero_threads; ++i) {
+            size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread(
+                max_chunk<T>,
+                std::cref(valores),
+                inicio,
+                fim,
+                std::ref(maximos_locais),
+                i
+            );
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        T max_global = maximos_locais[0];
+        for (size_t i=1; i<threads_ativas; ++i) {
+            if (maximos_locais[i] > max_global) {
+                max_global = maximos_locais[i];
+            }
+        }
+
+        return max_global;
+    }
+
+    template <typename T>
+    static T moda (const std::vector<T>& valores) {
+        const size_t tamanho = valores.size();
+        if (tamanho == 0) throw std::invalid_argument("Vetor vazio!");
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::unordered_map<T, int>> contagens_locais(numero_threads);
+        std::vector<std::thread> threads(numero_threads);
+        unsigned int threads_ativas = 0;
+
+        size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i < numero_threads; ++i) {
+            size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread([&valores, inicio, fim, &contagens_locais, i](){
+                for (size_t j = inicio; j < fim; ++j) {
+                    ++contagens_locais[i][valores[j]];
+                }
+            });
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        std::unordered_map<T, int> contagem_global;
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            for (const auto& par : contagens_locais[i]) {
+                contagem_global[par.first] += par.second;
+            }
+        }
+
+        T moda_campea = valores[0];
+        int max_rep = 0;
+        for (const auto& par : contagem_global) {
+            if (par.second > max_rep) {
+                max_rep = par.second;
+                moda_campea = par.first;
+            }
+        }
+
+        return moda_campea;
+
+    }
+
+    // Essa função tem outra igual em baixo que não recebe Q1 e Q3 para ter sobrecarga
+    template <typename T>
+    static std::vector<T> remover_outliers(const std::vector<T>& valores, double q1, double q3) {
+        double iqr_val = q3 - q1;
+        double limite_inferior = q1 - 1.5 * iqr_val;
+        double limite_superior = q3 + 1.5 * iqr_val;
+
+        const size_t tamanho = valores.size();
+        if (tamanho == 0) return std::vector<T>();
+
+        unsigned int numero_threads = std::thread::hardware_concurrency();
+        if (numero_threads == 0) numero_threads = 2;
+        if (numero_threads > tamanho) numero_threads = tamanho;
+
+        std::vector<std::vector<T>> resultados_locais(numero_threads);
+        std::vector<std::thread> threads(numero_threads);
+        unsigned int threads_ativas = 0;
+
+        size_t chunk_size = (tamanho + numero_threads - 1) / numero_threads;
+
+        for (unsigned int i=0; i < numero_threads; ++i) {
+            size_t inicio = i * chunk_size;
+            if (inicio >= tamanho) break;
+
+            size_t fim = (inicio + chunk_size < tamanho) ? (inicio + chunk_size) : tamanho;
+
+            threads[i] = std::thread([&valores, inicio, fim, &resultados_locais, i, limite_inferior, limite_superior]() {
+                for (size_t j = inicio; j < fim; ++j) {
+                    auto val = static_cast<double>(valores[j]);
+                    if (val >= limite_inferior && val <= limite_superior) {
+                        resultados_locais[i].push_back(valores[j]);
+                    }
+                }
+            });
+            threads_ativas++;
+        }
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            if (threads[i].joinable()) threads[i].join();
+        }
+
+        std::vector<T> resultado_final;
+        size_t total_elementos_restantes = 0;
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            total_elementos_restantes += resultados_locais[i].size();
+        }
+        resultado_final.reserve(total_elementos_restantes);
+
+        for (unsigned int i=0; i < threads_ativas; ++i) {
+            resultado_final.insert(resultado_final.end(),
+                resultados_locais[i].begin(), resultados_locais[i].end());
+        }
+        return resultado_final;
+    }
+
+    // Essa aqui não recebe q1 nem q3, então ela mesma calcula e depois manda para o "remover_outliers"
+    template <typename T>
+    static std::vector<T> remover_outliers(std::vector<T>& valores) {
+        if (valores.size() < 4) return valores;
+
+        if (!esta_ordenado(valores)) sort(valores);
+
+        size_t pos_q1 = valores.size()/4;
+        size_t pos_q3 = (valores.size()*3)/4;
+
+        auto q1 = static_cast<double>(valores[pos_q1]);
+        auto q3 = static_cast<double>(valores[pos_q3]);
+
+        return remover_outliers(valores, q1, q3);
+    }
+
 };
+
 
 
 
