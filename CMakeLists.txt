@@ -7,4 +7,8 @@ include_directories(.)
 
 add_executable(Threads_CPP
         main.cpp
-        Operacoes.h)
+        Operacoes.h
+        Estruturas.h
+        LeitorCSV.h
+        BibliotecaPPC.h
+)

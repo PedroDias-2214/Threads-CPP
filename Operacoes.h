@@ -353,7 +353,7 @@ public:
 
     // Essa função ordena se o vetor não estiver ordenado
     template <typename T>
-    static double mediana(std::vector<T>& valores) {
+    static double mediana(std::vector<T> valores) {
         if (valores.empty()) return 0.0;
 
         if (!esta_ordenado(valores)) sort(valores);
@@ -365,7 +365,7 @@ public:
 
     // Essa função ordena se o vetor não estiver ordenado
     template <typename T>
-    static double iqr(std::vector<T>& valores) {
+    static double iqr(std::vector<T> valores) {
         const size_t tamanho = valores.size();
 
         if (tamanho < 4) return 0.0;
@@ -411,7 +411,7 @@ public:
             if (threads[i].joinable()) threads[i].join();
         }
 
-        int proximo_id = 1;
+        int proximo_id = 0;
         for (const auto& set_local : sets_locais) {
             for (const std::string& palavra : set_local) {
                 if (dicionario_final.find(palavra) == dicionario_final.end()) {
@@ -620,7 +620,7 @@ public:
 
     // Essa função tem outra igual em baixo que não recebe Q1 e Q3 para ter sobrecarga
     template <typename T>
-    static std::vector<T> remover_outliers(const std::vector<T>& valores, double q1, double q3) {
+    static std::vector<T> remover_outliers(const std::vector<T> valores, double q1, double q3) {
         double iqr_val = q3 - q1;
         double limite_inferior = q1 - 1.5 * iqr_val;
         double limite_superior = q3 + 1.5 * iqr_val;
@@ -675,7 +675,7 @@ public:
 
     // Essa aqui não recebe q1 nem q3, então ela mesma calcula e depois manda para o "remover_outliers"
     template <typename T>
-    static std::vector<T> remover_outliers(std::vector<T>& valores) {
+    static std::vector<T> remover_outliers(std::vector<T> valores) {
         if (valores.size() < 4) return valores;
 
         if (!esta_ordenado(valores)) sort(valores);
@@ -688,10 +688,6 @@ public:
 
         return remover_outliers(valores, q1, q3);
     }
-
 };
-
-
-
 
 #endif
