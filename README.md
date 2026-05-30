@@ -1,2 +1,2 @@
 # Threads-CPP
-Esse projeto tem como objetivo comparar o desempenho de ler um dataset sem threads, com threads e utilizando as threads do OpenMP
+Esse projeto tem como objetivo permitir a leitura paralelizada de datasets grandes utilizando threads em C++
